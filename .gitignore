@@ -1,1 +1,18 @@
-# .gitignore
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+reports/
+rendered.yaml
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl.bak
+*.sarif
+sbom*.json
+.env
+*.pem
+*.key

@@ -1,1 +1,13 @@
-# k8s/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+# The CI pipeline rewrites newTag with the commit SHA after a signed image is pushed (GitOps).
+images:
+  - name: ghcr.io/ashil282/azure-devsecops-lab
+    newTag: 0.1.0

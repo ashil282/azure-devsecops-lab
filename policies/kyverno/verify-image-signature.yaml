@@ -1,1 +1,30 @@
-# policies/kyverno/verify-image-signature.yaml
+# Supply-chain control: only images signed by THIS repo's GitHub Actions (cosign keyless) may run.
+# Starts in Audit so locally built images still work. Switch to Enforce once you deploy from GHCR.
+# scripts/set-owner.sh replaces OWNER with your GitHub username.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+  annotations:
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Audit
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-cosign-keyless
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaces: ["devsecops"]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/ashil282/azure-devsecops-lab*"
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: "https://token.actions.githubusercontent.com"
+                    subject: "https://github.com/ashil282/azure-devsecops-lab/.github/workflows/*"
+                    rekor:
+                      url: https://rekor.sigstore.dev

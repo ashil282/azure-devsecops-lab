@@ -1,1 +1,5 @@
-# .hadolint.yaml
+failure-threshold: warning
+ignored: []
+trustedRegistries:
+  - docker.io
+  - ghcr.io

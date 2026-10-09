@@ -1,0 +1,31 @@
+.PHONY: install cluster argocd kyverno deploy scan zap test destroy help
+
+help:
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+install: ## install all tools (Ubuntu)
+	@./scripts/00-install-tools.sh
+
+cluster: ## create the kind cluster
+	@./scripts/01-cluster.sh
+
+argocd: ## install Argo CD
+	@./scripts/02-argocd.sh
+
+kyverno: ## install Kyverno and apply policies
+	@./scripts/03-kyverno.sh
+
+deploy: ## build, scan, load and deploy locally
+	@./scripts/04-deploy-local.sh
+
+scan: ## run the full local security suite
+	@./scripts/06-local-scan.sh
+
+zap: ## OWASP ZAP baseline against localhost:8080
+	@./scripts/05-zap.sh
+
+test: ## run unit tests with coverage
+	python3 -m venv .venv && . .venv/bin/activate && pip install -q -r app/requirements-dev.txt && pytest app/tests --cov=app
+
+destroy: ## delete the cluster to free RAM
+	kind delete cluster --name devsecops

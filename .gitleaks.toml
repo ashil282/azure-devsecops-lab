@@ -1,1 +1,10 @@
-# .gitleaks.toml
+title = "lab gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow documented fake secrets used in docs"
+paths = [
+    '''^docs/''',
+]

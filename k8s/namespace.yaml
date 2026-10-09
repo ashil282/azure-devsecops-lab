@@ -1,1 +1,9 @@
-# k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devsecops
+  labels:
+    # Built-in Pod Security Admission: the "restricted" profile is the enterprise baseline.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

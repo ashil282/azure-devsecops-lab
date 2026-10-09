@@ -1,1 +1,143 @@
-# .github/workflows/build-sign-deploy.yml
+name: 3-build, scan, sign, gitops-deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "k8s/kustomization.yaml"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-scan:
+    name: Build image + Trivy scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+      image_name: ${{ steps.vars.outputs.image_name }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: vars
+        run: |
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "image_name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (local only, not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: scan-target:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy - vulnerability scan (fail on HIGH/CRITICAL with a fix)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: scan-target:${{ github.sha }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  publish-sign:
+    name: Push, SBOM, Cosign sign (keyless)
+    needs: build-scan
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: mode=max
+          tags: |
+            ${{ env.REGISTRY }}/${{ needs.build-scan.outputs.image_name }}:${{ needs.build-scan.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ needs.build-scan.outputs.image_name }}:latest
+          cache-from: type=gha
+
+      - name: Generate SBOM (Syft, SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ needs.build-scan.outputs.image_name }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign image by digest
+        run: |
+          cosign sign --yes "${REGISTRY}/${{ needs.build-scan.outputs.image_name }}@${{ steps.push.outputs.digest }}"
+
+      - name: Attest SBOM to the image
+        run: |
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json \
+            "${REGISTRY}/${{ needs.build-scan.outputs.image_name }}@${{ steps.push.outputs.digest }}"
+
+  gitops-update:
+    name: Bump image tag in Git (ArgoCD picks it up)
+    needs: [build-scan, publish-sign]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Update kustomization with new tag
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ needs.build-scan.outputs.image_name }}"
+          TAG="${{ needs.build-scan.outputs.short_sha }}"
+
+          sed -i -E "s#^( *- name: ).*#\1${IMG}#; s#^( *newTag: ).*#\1${TAG}#" k8s/kustomization.yaml
+          sed -i -E "s#^( *image: ).*#\1${IMG}:${TAG}#" k8s/deployment.yaml
+          sed -i -E "s#(value: )\"[0-9a-z.]+\"#\1\"${TAG}\"#" k8s/deployment.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add k8s
+          git diff --cached --quiet || git commit -m "chore(gitops): deploy ${{ needs.build-scan.outputs.short_sha }} [skip ci]"
+          git push

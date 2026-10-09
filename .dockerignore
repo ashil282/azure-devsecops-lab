@@ -1,1 +1,17 @@
-# .dockerignore
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+k8s
+infra
+policies
+argocd
+docs
+scripts
+reports
+*.md

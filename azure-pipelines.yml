@@ -1,1 +1,105 @@
-# azure-pipelines.yml
+# Azure DevOps mirror of the GitHub Actions pipelines.
+# Azure DevOps Services is free without an Azure subscription (sign in with a Microsoft account).
+# Free parallel jobs: use a SELF-HOSTED agent on your PC (pool "Default"); see docs/GUIDE.md.
+# The agent machine needs the tools installed by scripts/00-install-tools.sh.
+
+trigger:
+  branches:
+    include: [main]
+
+pr:
+  branches:
+    include: [main]
+
+pool:
+  name: Default
+
+variables:
+  imageName: azure-devsecops-lab
+  imageTag: $(Build.BuildId)
+
+stages:
+  - stage: SecretsAndLint
+    displayName: Secrets and lint
+    jobs:
+      - job: shift_left
+        steps:
+          - script: gitleaks detect --source . --redact --verbose
+            displayName: Gitleaks
+
+          - script: |
+              python3 -m venv .venv
+              . .venv/bin/activate
+              pip install -q -r app/requirements-dev.txt yamllint
+              ruff check app
+              yamllint -c .yamllint.yml k8s policies argocd
+            displayName: ruff and yamllint
+
+          - script: hadolint --config .hadolint.yaml Dockerfile
+            displayName: Hadolint
+
+  - stage: TestAndSast
+    displayName: Test and SAST
+    dependsOn: SecretsAndLint
+    jobs:
+      - job: test_sast
+        steps:
+          - script: |
+              python3 -m venv .venv
+              . .venv/bin/activate
+              pip install -q -r app/requirements-dev.txt
+              pytest app/tests --cov=app --cov-report=xml --cov-fail-under=80
+            displayName: pytest
+
+          - script: semgrep scan --config p/ci --config p/python --error --junit-xml --output semgrep.xml app
+            displayName: Semgrep
+
+          - task: PublishTestResults@2
+            condition: always()
+            inputs:
+              testResultsFiles: semgrep.xml
+              testRunTitle: Semgrep
+
+  - stage: BuildAndScan
+    displayName: Build, scan, SBOM
+    dependsOn: TestAndSast
+    jobs:
+      - job: image
+        steps:
+          - script: docker build -t $(imageName):$(imageTag) .
+            displayName: Docker build
+
+          - script: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(imageName):$(imageTag)
+            displayName: Trivy image scan
+
+          - script: syft $(imageName):$(imageTag) -o spdx-json=$(Build.ArtifactStagingDirectory)/sbom.spdx.json
+            displayName: SBOM (Syft)
+
+          - script: grype $(imageName):$(imageTag) --fail-on high
+            displayName: Grype second opinion
+
+          - publish: $(Build.ArtifactStagingDirectory)/sbom.spdx.json
+            artifact: sbom
+
+  - stage: IaCAndPolicy
+    displayName: IaC and policy
+    dependsOn: SecretsAndLint
+    jobs:
+      - job: iac
+        steps:
+          - script: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+            displayName: Bicep build
+
+          - script: |
+              cd infra/terraform
+              terraform init -backend=false -input=false
+              terraform validate
+            displayName: Terraform validate
+
+          - script: checkov --config-file .checkov.yaml
+            displayName: Checkov
+
+          - script: |
+              kubectl kustomize k8s > rendered.yaml
+              conftest test rendered.yaml -p policies/conftest
+            displayName: Conftest (OPA)

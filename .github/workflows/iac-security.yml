@@ -1,1 +1,131 @@
-# .github/workflows/iac-security.yml
+name: 4-iac & policy security
+
+on:
+  push:
+    branches: [main]
+    paths: ["infra/**", "k8s/**", "policies/**", "Dockerfile", ".github/workflows/**"]
+  pull_request:
+    paths: ["infra/**", "k8s/**", "policies/**", "Dockerfile", ".github/workflows/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Bicep, Terraform, K8s manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Bicep build + lint (no Azure login needed)
+        run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt/init/validate (no Azure login needed)
+        working-directory: infra/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint
+        working-directory: infra/terraform
+        run: |
+          tflint --init
+          tflint
+
+      - name: Kubeconform (schema validation)
+        run: |
+          kubectl kustomize k8s > rendered.yaml
+          docker run --rm \
+            -v "$PWD:/w" \
+            ghcr.io/yannh/kubeconform:latest \
+            -strict -summary /w/rendered.yaml
+
+  checkov:
+    name: Checkov (Bicep, Terraform, K8s, Dockerfile, Actions)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          config_file: .checkov.yaml
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+
+      # Findings show in the Security tab. Remediate them, then flip soft-fail to false in .checkov.yaml.
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+
+  trivy-config:
+    name: Trivy misconfiguration scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+  policy-as-code:
+    name: Conftest (OPA) + Kyverno CLI against rendered manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Render manifests
+        run: kubectl kustomize k8s > rendered.yaml
+
+      - name: Install Conftest
+        run: |
+          VER=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | jq -r .tag_name | sed 's/^v//')
+          curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${VER}/conftest_${VER}_Linux_x86_64.tar.gz" | tar xz
+          conftest
+          sudo mv conftest /usr/local/bin/
+
+      - name: Conftest
+        run: conftest test rendered.yaml -p policies/conftest
+
+      - name: Install Kyverno CLI
+        run: |
+          VER=$(curl -s https://api.github.com/repos/kyverno/kyverno/releases/latest | jq -r .tag_name)
+          curl -sSL "https://github.com/kyverno/kyverno/releases/download/${VER}/kyverno-cli_${VER}_linux_x86_64.tar.gz" | tar xz kyverno
+          sudo mv kyverno /usr/local/bin/
+
+      - name: Kyverno policies vs manifests
+        run: |
+          kyverno apply \
+            policies/kyverno/disallow-latest-tag.yaml \
+            policies/kyverno/require-run-as-nonroot.yaml \
+            policies/kyverno/requireresource-limits.yaml \
+            policies/kyverno/disallow-privileged.yaml \
+            --resource rendered.yaml

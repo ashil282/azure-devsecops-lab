@@ -1,1 +1,15 @@
-# scripts/kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: devsecops
+
+nodes:
+  - role: control-plane
+
+extraPortMappings:
+  # Service NodePort 30080 is reachable at
+  # http://localhost:8080
+  # No ingress controller needed.
+  - containerPort: 30080
+    hostPort: 8080
+    protocol: TCP

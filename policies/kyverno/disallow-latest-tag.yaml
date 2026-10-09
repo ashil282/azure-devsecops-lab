@@ -1,1 +1,25 @@
-# policies/kyverno/disallow-latest-tag.yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow latest tag
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - devsecops
+      validate:
+        message: "Images must use an explicit tag other than ':latest'."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest & *:*"

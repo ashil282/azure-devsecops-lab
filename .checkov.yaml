@@ -1,1 +1,29 @@
-# .checkov.yaml
+directory:
+- .
+framework:
+- kubernetes
+- dockerfile
+- bicep
+- terraform
+- github_actions
+# Learning mode: findings are reported (Security tab) but do not fail the build.
+# Exercise: fix the findings, then set soft-fail to false.
+soft-fail: true
+quiet: true
+skip-check:
+# Image digests are pinned by the GitOps bot using tags + signature verification (Kyverno).
+- CKV_K8S_43
+- CKV_K8S_14
+# Cost-saving lab choices (documented in docs/GUIDE.md "Production hardening ladder").
+- CKV_AZURE_163 # ACR vulnerability scanning needs Premium/Defender
+- CKV_AZURE_164 # ACR image signing (we sign with cosign in the pipeline)
+- CKV_AZURE_165 # ACR geo-replication (Premium)
+- CKV_AZURE_166 # ACR quarantine (Premium)
+- CKV_AZURE_167 # ACR retention (Premium)
+- CKV_AZURE_233 # ACR zone redundancy (Premium)
+- CKV_AZURE_237 # ACR dedicated endpoints (Premium)
+- CKV_AZURE_139 # ACR public network disabled (Premium)
+- CKV_AZURE_189 # Key Vault public access (lab has no private endpoint)
+skip-path:
+- .git
+- reports
