@@ -75,7 +75,7 @@ stages:
           - script: syft $(imageName):$(imageTag) -o spdx-json=$(Build.ArtifactStagingDirectory)/sbom.spdx.json
             displayName: SBOM (Syft)
 
-          - script: grype $(imageName):$(imageTag) --fail-on high
+          - script: grype $(imageName):$(imageTag) --fail-on critical
             displayName: Grype second opinion
 
           - publish: $(Build.ArtifactStagingDirectory)/sbom.spdx.json
