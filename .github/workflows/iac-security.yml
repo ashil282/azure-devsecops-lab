@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Bicep build + lint (no Azure login needed)
         run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
@@ -55,7 +55,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: bridgecrewio/checkov-action@v12
         with:
@@ -78,7 +78,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: aquasecurity/trivy-action@0.33.1
         with:
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Render manifests
         run: kubectl kustomize k8s > rendered.yaml
