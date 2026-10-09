@@ -27,7 +27,7 @@ spec:
         - name: app
           # Replaced by kustomize (see kustomization.yaml). OWNER is set by scripts/set-owner.sh
           image: ghcr.io/ashil282/azure-devsecops-lab:0.1.0
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080

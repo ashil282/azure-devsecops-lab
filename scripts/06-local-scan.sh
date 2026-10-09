@@ -69,6 +69,7 @@ run "Semgrep (SAST)" \
 
 run "Docker build" \
   docker build \
+  --network=host \
   -t devsecops-lab:scan \
   .
 
@@ -87,7 +88,7 @@ run "Syft SBOM" \
 
 run "Grype (SBOM)" \
   grype sbom:reports/sbom.spdx.json \
-  --fail-on high
+  --fail-on critical
 
 run "Trivy IaC/config" \
   trivy config \

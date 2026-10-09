@@ -30,12 +30,12 @@ resource "azurerm_log_analytics_workspace" "law" {
 }
 
 resource "azurerm_container_registry" "acr" {
-  name                   = "${var.prefix}acr${var.suffix}"
-  resource_group_name    = azurerm_resource_group.rg.name
-  location               = azurerm_resource_group.rg.location
-  sku                    = "Basic"
-  admin_enabled          = false
-  anonymous_pull_enabled = false
+  name                          = "${var.prefix}acr${var.suffix}"
+  resource_group_name           = azurerm_resource_group.rg.name
+  location                      = azurerm_resource_group.rg.location
+  sku                           = "Basic"
+  admin_enabled                 = false
+  anonymous_pull_enabled        = false
   public_network_access_enabled = true
 }
 
@@ -46,9 +46,9 @@ resource "azurerm_key_vault" "kv" {
   tenant_id           = data.azurerm_client_config.current.tenant_id
   sku_name            = "standard"
 
-  rbac_authorization_enabled = true
-  purge_protection_enabled   = true
-  soft_delete_retention_days = 7
+  rbac_authorization_enabled    = true
+  purge_protection_enabled      = true
+  soft_delete_retention_days    = 7
   public_network_access_enabled = true
 
   network_acls {
@@ -63,12 +63,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "${var.prefix}-${var.suffix}"
 
-  sku_tier                   = "Free"
+  sku_tier                          = "Free"
   role_based_access_control_enabled = true
-  local_account_disabled     = true
-  oidc_issuer_enabled        = true
-  workload_identity_enabled  = true
-  azure_policy_enabled       = true
+  local_account_disabled            = true
+  oidc_issuer_enabled               = true
+  workload_identity_enabled         = true
+  azure_policy_enabled              = true
 
   default_node_pool {
     name       = "system"
@@ -83,6 +83,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   azure_active_directory_role_based_access_control {
     azure_rbac_enabled = true
+    tenant_id          = data.azurerm_client_config.current.tenant_id
   }
 
   network_profile {

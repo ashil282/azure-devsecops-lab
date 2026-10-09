@@ -35,7 +35,7 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 # Copy application source code
-COPY app/ app.py .
+COPY app/ ./
 
 # Change ownership of the app directory to the non-root user
 RUN chown -R 10001:10001 /app
@@ -48,4 +48,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
 
-ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--worker-tmp-dir", "/dev/shm", "app:app"]# Dockerfile
+ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--worker-tmp-dir", "/dev/shm", "app:app"]
