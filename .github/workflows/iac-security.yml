@@ -22,7 +22,7 @@ jobs:
       - name: Bicep build + lint (no Azure login needed)
         run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform fmt/init/validate (no Azure login needed)
         working-directory: infra/terraform
